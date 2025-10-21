@@ -1,0 +1,122 @@
+{
+	"security.workspace.trust.untrustedFiles": "open",
+
+	"workbench.iconTheme": "symbols",
+	"workbench.colorTheme": "Best Themes - Material Ocean No Italic",
+	"workbench.startupEditor": "newUntitledFile",
+	"workbench.secondarySideBar.defaultVisibility": "hidden",
+	"workbench.tree.renderIndentGuides": "none",
+	"workbench.colorCustomizations": {
+		"editorWhitespace.foreground": "#ffffff80"
+	},
+	"window.zoomLevel": 0,
+	"window.commandCenter": false,
+
+	"editor.cursorStyle": "block",
+	"editor.formatOnSave": true,
+	"editor.insertSpaces": false,
+	"editor.tabSize": 4,
+	"editor.renderWhitespace": "none",
+	"editor.renderControlCharacters": true,
+	"editor.lineNumbers": "relative",
+	"editor.wordWrap": "on",
+	"editor.mouseWheelZoom": true,
+	"editor.smoothScrolling": true,
+	"editor.quickSuggestions": { "strings": true },
+	"editor.suggestSelection": "first",
+	"editor.tabCompletion": "on",
+	"editor.wrappingStrategy": "advanced",
+	"editor.guides.indentation": false,
+	"editor.guides.highlightActiveIndentation": false,
+	"editor.guides.bracketPairs": false,
+	"editor.bracketPairColorization.enabled": true,
+	"editor.rulers": [80, 100, 120],
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": "always",
+		"source.organizeImports": "always"
+	},
+	"editor.inlineSuggest.enabled": true,
+	"editor.fontFamily": "Operator Mono, Geist Mono, Menlo, Monaco, 'Courier New', monospace",
+	"editor.fontWeight": "bold",
+
+	"breadcrumbs.enabled": true,
+
+	"explorer.compactFolders": false,
+
+	"prettier.useTabs": true,
+	"prettier.tabWidth": 4,
+	"prettier.semi": true,
+	"prettier.singleQuote": false,
+	"prettier.printWidth": 100,
+
+	"[javascript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+	"[javascriptreact]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+	"[typescriptreact]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+	"[html]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+	"[css]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+	"[markdown]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+	"[yaml]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+	"[jsonc]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+	"[python]": {
+		"editor.defaultFormatter": "ms-python.black-formatter",
+		"editor.formatOnSave": true,
+		"editor.wordWrap": "on"
+	},
+	"[php]": {
+		"editor.defaultFormatter": "bmewburn.vscode-intelephense-client"
+	},
+	"[go]": { "editor.defaultFormatter": "golang.go" },
+	"[shellscript]": { "editor.defaultFormatter": "foxundermoon.shell-format" },
+
+	"shellformat.flag": "-i 4 -ci -bn",
+	"shellcheck.enable": true,
+	"shellcheck.run": "onSave",
+	"shellcheck.executablePath": "shellcheck",
+
+	"files.trimTrailingWhitespace": true,
+	"files.insertFinalNewline": true,
+	"files.exclude": {
+		"**/.git": true,
+		"**/.DS_Store": true,
+		"**/node_modules": true,
+		"**/__pycache__": true,
+		"**/vendor": true
+	},
+	"files.associations": { "*.css": "tailwindcss" },
+
+	"terminal.integrated.defaultProfile.linux": "zsh",
+	"terminal.integrated.defaultProfile.osx": "zsh",
+	"terminal.integrated.defaultLocation": "editor",
+	"terminal.integrated.fontFamily": "",
+
+	"git.enableSmartCommit": true,
+	"git.confirmSync": false,
+	"git.autofetch": true,
+
+	"code-runner.executorMap": {
+		"shellscript": "bash"
+	},
+
+	"github.copilot.chat.edits.suggestRelatedFilesFromGitHistory": false,
+	"github.copilot.chat.edits.suggestRelatedFilesForTests": false,
+	"github.copilot.chat.copilotDebugCommand.enabled": false,
+	"github.copilot.chat.codeGeneration.useInstructionFiles": false,
+
+	"reactSnippets.settings.importReactOnTop": false,
+	"discord.detailsIdling": "Editing {file_name}",
+	"discord.largeImageIdling": "Editing {file_name}",
+	"discord.lowerDetailsIdling": "Editing {file_name}",
+	"editor.fontSize": 13,
+	"github.copilot.enable": {
+		"*": true,
+		"plaintext": false,
+		"markdown": true,
+		"scminput": false
+	}
+}
