@@ -697,20 +697,51 @@ Treat their limits as seriously as a rate limit on your own API.
 
 ## Testing Expectations
 
+Three distinct levels of testing apply here — know which one a given
+piece of work actually needs rather than defaulting to one or skipping
+the question entirely.
+
+**Unit tests — always, for logic**
 - Use Bun's built-in test runner (`bun test`) unless the project has
   already standardized on something else.
-- Every `lib/db/queries` function and every Hono route needs a test that
-  covers the happy path and at least one failure/validation case.
+- Every `lib/db/queries` function, every Zod schema, and every pure
+  helper needs a unit test covering the happy path and at least one
+  failure/validation case.
+- Mock external services at the boundary — R2 client, Mailgun client, and
+  Better-Auth session checks are mocked in unit tests; don't hit a real
+  external service or a real Neon database here.
 - Zod schemas: test that invalid input is rejected, not just that valid
   input passes.
-- Mock external services at the boundary — R2 client, Mailgun client, and
-  Better-Auth session checks are mocked in unit tests; don't hit real
-  external services or a real Neon database in unit tests.
-- Use a separate test/branch database (e.g. a Neon branch) for integration
-  tests that need a real Postgres instance — never run tests against the
-  production or shared dev database.
-- Critical flows (sign-up/login via Better-Auth, file upload via R2,
-  transactional emails via Mailgun) need at least one integration test.
+- This is the default, minimum bar for any new logic. Skipping unit tests
+  isn't a judgment call — write them.
+
+**Integration tests — for anything crossing a real boundary**
+- Use when a test needs to exercise a Hono route end-to-end, a real
+  database query against actual Postgres, or the interaction between two
+  internal layers (e.g. a route calling a query calling the DB).
+- Use a separate test/branch database (e.g. a Neon branch) for these —
+  never run integration tests against the production or shared dev
+  database.
+- Every Hono route needs at least one integration test hitting the real
+  route (not just the underlying function in isolation).
+- Needed for: any new API route, any auth-gated flow, any Drizzle query
+  with joins or relational complexity worth verifying against a real DB.
+
+**E2E tests — only for critical user-facing flows**
+- Use a browser-driving tool (e.g. Playwright) to test a full flow
+  through the actual UI, as a real user would.
+- Reserve these for flows where a break would be severe and hard to catch
+  otherwise: sign-up/login (Better-Auth), any payment or checkout path,
+  file upload (R2), and any flow sending a transactional email (Mailgun)
+  end-to-end.
+- Don't write E2E tests for every page or every component state — they're
+  slow and expensive to maintain. If a unit or integration test can catch
+  the same bug, prefer that instead. Ask "would this break silently and
+  badly in production without an E2E test?" — if no, skip it.
+- New E2E tests are proposed explicitly (which flow, why it needs this
+  level) rather than added by default alongside every feature.
+
+**General rules across all levels**
 - Don't skip or delete a failing test to unblock a build — fix it or flag
   it explicitly.
 - Every bug fix ships with a regression test that fails without the fix.
@@ -722,7 +753,10 @@ Treat their limits as seriously as a rate limit on your own API.
 - Confirm no business logic leaked into a component or a thin Hono route.
 - Confirm new external input is validated with Zod.
 - Confirm Drizzle schema changes have a generated migration.
-- Confirm tests exist for new logic and pass locally with `bun test`.
+- Confirm tests exist for new logic and pass locally with `bun test` —
+  unit tests for the logic itself, an integration test if a new Hono
+  route or DB boundary was added, and an E2E test only if this touches a
+  critical flow (auth, payment, upload, transactional email).
 - Confirm no file/component/function has silently grown past the size
   limits above — split before finishing, not after.
 - Confirm new shared types live in `types/`, not scattered inline.
