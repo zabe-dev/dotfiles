@@ -186,6 +186,9 @@ app/
   api/
     [[...route]]/
       route.ts                # Hono app mounted here (catch-all)
+  loading.tsx                  # global root loading fallback (bouncing dots)
+  not-found.tsx                # global root not-found fallback
+  error.tsx                    # global root error boundary
 
 server/                        # Hono API implementation, framework-agnostic
   routes/
@@ -231,6 +234,10 @@ types/
 components/
   ui/                          # shared, generic, reusable primitives (built
                                 # from scratch — see "UI Components")
+                                # includes loading-dots.tsx, the shared
+                                # bouncing-dots indicator used by the global
+                                # loading.tsx and anywhere else a small
+                                # inline loading state is needed
 
 PROGRESS.md                    # running log of completed/in-progress/next
                                 # work — see "Staged Development & Progress
@@ -377,6 +384,14 @@ arbitrarily by line count — e.g. `invoice-form.tsx` +
   — never hand-write icon SVGs or copy-paste one-off SVG markup.
 - Pick one or two icon sets for visual consistency (e.g. `lucide` or
   `heroicons` via Iconify) rather than mixing icon sets across the app.
+- For social/brand icons specifically, use the **Akar Icons** set via
+  Iconify (e.g. `akar-icons:github-fill`, `akar-icons:telegram-fill`,
+  `akar-icons:discord-fill`) rather than pulling social logos from the
+  general-purpose icon set. Akar Icons names are consistently suffixed
+  `-fill` (it doesn't offer separate outline variants for most icons) —
+  don't guess at `-filled`/`-outlined`/`-outline-fill` variants, they
+  don't exist in this set. Verify exact names on
+  icon-sets.iconify.design/akar-icons before using.
 - Wrap `<Icon>` in a shared component if you need consistent sizing/color
   defaults across the app, rather than repeating props everywhere.
 
@@ -409,6 +424,35 @@ the right one for the situation, not whichever is more familiar.
 - A skeleton must match the real content's exact dimensions (height,
   grid, spacing) so swapping in real data causes zero layout shift. A
   skeleton that doesn't match the final layout is worse than a spinner.
+- A global `app/loading.tsx` is required at the root — this is the
+  fallback for full page navigations before route-specific content is
+  ready. Use a simple bouncing-dots indicator here (three dots,
+  staggered opacity/translateY animation via Framer Motion), centered on
+  the viewport — not a full-page skeleton, since the root loading state
+  doesn't know the shape of the destination page's content. Respect
+  `prefers-reduced-motion` here too — fall back to a static/non-animated
+  dots or pulsing-opacity treatment rather than the staggered bounce.
+- Build the bouncing-dots indicator as a single shared component
+  (`components/ui/loading-dots.tsx`) rather than reimplementing it inline
+  in `app/loading.tsx` — reuse it anywhere else a small inline loading
+  state is needed (e.g. inside a button's pending state) instead of
+  hand-rolling a new spinner each time.
+- `loading.tsx` files render into the `children` slot of the nearest
+  layout, not as a standalone page — if the header/footer live in
+  `app/layout.tsx` (or a nested layout), they'll render around the
+  loading state automatically. Never manually re-import or re-render the
+  header/footer inside a `loading.tsx` file itself; it should contain
+  only the loading indicator, nothing else. If a fallback is showing a
+  header/footer twice, that's a sign the header/footer got duplicated
+  into the loading file instead of living solely in the shared layout —
+  fix it there, not by hiding one copy with CSS. The same slot behavior
+  applies to `not-found.tsx` and `error.tsx` — don't duplicate the
+  header/footer into those either.
+- Route-specific `loading.tsx` files (e.g. `app/dashboard/loading.tsx`)
+  should still use content-matched skeletons where the destination
+  layout is known — the bouncing-dots pattern is reserved for the global
+  root fallback only, not a substitute for a real skeleton wherever the
+  target layout is predictable.
 
 **Optimistic updates — for writes (mutations/actions)**
 - Use when the user takes an action and the likely result is already
@@ -419,7 +463,8 @@ the right one for the situation, not whichever is more familiar.
   rate. For actions with real failure modes worth surfacing clearly
   (payments, file uploads to R2, anything Better-Auth-gated with
   meaningful consequences), wait for confirmation and show explicit
-  pending/error states instead.
+  pending/error states instead (e.g. a disabled button with the shared
+  `loading-dots` indicator or a spinner icon, not an optimistic result).
 - Always handle the rollback path — if the mutation fails, revert the
   optimistic state and surface the error (via the shared `AppError`
   shape), don't leave the UI showing a result that didn't actually happen.
@@ -463,6 +508,59 @@ instant.
   before prefixing anything with `NEXT_PUBLIC_`.
 - Secrets are never logged, never included in error messages returned to
   the client, and never hard-coded as a fallback default in code.
+
+## Stack Decision: Deployment Target
+
+Decide this once, at project start, the same way you decided on Hono —
+don't add Docker tooling speculatively if the project will never use it.
+
+| If the project... | Use |
+|---|---|
+| Deploys to Vercel (or another platform with native Next.js build support) and has no requirement to run outside that platform (no on-prem, no other cloud, no self-hosted orchestrator) | **Skip Docker entirely.** Delete the "Docker & Deployment" section below and its line in "Before You Finish." Let the platform's native build handle it. |
+| Needs to run on a container orchestrator (self-hosted, ECS/Cloud Run/Fly.io/Kubernetes, or explicitly required for portability across environments) | **Docker**, per the "Docker & Deployment" section below. |
+
+If it's unclear which applies, ask the specific question that resolves
+it (e.g. "will this ever run anywhere besides Vercel?") — then apply the
+table and don't relitigate it later in the project.
+
+**If Docker applies, a second decision: local dev too, or prod builds only?**
+
+| If local dev... | Use |
+|---|---|
+| Only needs the Next.js app running locally, and the database is a Neon dev/preview branch (already hosted, no local Postgres needed) | **No Docker Compose for local dev.** Docker is prod-build-only; run `bun run dev` locally against a Neon branch as normal. |
+| Needs a fully offline-capable local environment (no network dependency on Neon), or the team explicitly wants dev/prod parity via containers | **Docker Compose for local dev**, containerizing only the services that need it (e.g. a local Postgres) — don't containerize Neon-backed services that are already serverless/hosted, since that's redundant infrastructure with nothing to gain from it. |
+
+## Docker & Deployment
+
+- If deploying via Docker, use a multi-stage `Dockerfile`: a `deps` stage
+  installing with Bun, a `builder` stage running `bun run build`, and a
+  minimal `runner` stage that copies only the built output — never ship
+  `node_modules`/dev dependencies or source `.ts` files in the final
+  image.
+- Use the official `oven/bun` base image, pinned to a specific version
+  tag (not `latest`), matching whatever Bun version is in
+  `package.json`/`.bun-version`.
+- Set `output: "standalone"` in `next.config.js` so the final image only
+  needs the Next.js standalone build output plus the Bun runtime — not
+  the full source tree or monorepo.
+- `.dockerignore` must exclude `.env*`, `node_modules`, `.next/cache`,
+  `.git`, and any local-only artifacts — never bake env files or secrets
+  into an image layer.
+- Runtime env vars (`DATABASE_URL`, R2/Mailgun/Better-Auth secrets) are
+  injected at container start (platform env config, `--env-file`, or
+  orchestrator secrets) — never hard-coded or passed as a Docker `ARG`,
+  since build args can leak into image history/layers.
+- Expose a lightweight `GET /api/health` route for container
+  orchestrator liveness/readiness probes — it should only confirm the
+  process is up, never call the DB, R2, or Mailgun (a slow/down
+  third-party shouldn't fail your health check).
+- If using Docker Compose for local dev, only containerize services that
+  need it (e.g. a local Postgres if not using a Neon dev branch) — Neon
+  is already hosted/serverless, so don't add a redundant local Postgres
+  container unless there's a specific offline-dev reason to.
+- Confirm the final image size and layer count stay reasonable
+  (multi-stage build should mean the runner stage is small) — a bloated
+  image is a sign a stage is copying more than it needs to.
 
 ## Security Practices
 
@@ -760,7 +858,8 @@ the question entirely.
 - Confirm no file/component/function has silently grown past the size
   limits above — split before finishing, not after.
 - Confirm new shared types live in `types/`, not scattered inline.
-- Confirm icons use Iconify, not hand-written SVGs.
+- Confirm icons use Iconify, not hand-written SVGs, and social/brand
+  icons use Akar Icons with verified `-fill` names.
 - Confirm no shadcn/ui (or similar) component was pulled in unless
   explicitly requested.
 - Confirm no secrets are logged, hard-coded, or leaked to the client.
@@ -772,13 +871,17 @@ the question entirely.
   one type of change (not a feat mixed with a fix or a refactor), and the
   PR is scoped to one concern.
 - Confirm reads use Suspense/skeletons matching real content dimensions,
-  and writes use optimistic updates only where a failure is low-stakes and
-  a rollback path exists.
+  the global `app/loading.tsx` uses the shared bouncing-dots indicator
+  without duplicating the header/footer, and writes use optimistic
+  updates only where a failure is low-stakes and a rollback path exists.
 - Confirm independent fetches run in parallel (`Promise.all`) and no
   Drizzle query runs inside a loop (N+1).
 - Confirm any new third-party API call is cached/deduped where possible,
   has retry-with-backoff (not retry-in-a-loop), and stays under a known
   request/credit budget.
+- If this project deploys via Docker, confirm no secrets/env files ended
+  up in the image (`docker history <image>` or a build-time check), and
+  that `.dockerignore` is current.
 - Confirm `PROGRESS.md` is updated with what was completed and what's
   next before ending the session.
 - Confirm each stage was actually verified (run, not just written) before
