@@ -58,16 +58,16 @@ whether a human or an agent writes the next line of code.
 
 # Project Agent Instructions
 
-## Stack Decision: Choosing Your API Layer
+## Stack Decision: Choosing Your API Layer (Static Site vs. Hono Backend)
 
-This template's default stack includes Hono as the API layer. Use the
-table below once, at project start, to decide if that default applies —
-don't revisit or second-guess the decision mid-project.
+This template supports two tracks. Decide which one applies **once, at
+project start**, using the table below — don't revisit or second-guess
+the decision mid-project.
 
-| If the project has... | Use |
+| If the project has... | Track |
 |---|---|
-| Only this Next.js app calling its own backend, no webhooks, no other clients planned | **Next.js Route Handlers + Server Actions only.** Skip Hono entirely. Remove the Hono line from the stack list and the "Hono" subsection under Architectural Patterns. |
-| Any one of: a mobile app or public API planned, incoming webhooks (payments, email delivery, OAuth callbacks), per-route middleware needs (custom rate limits, custom CORS), or real abuse/scale risk (voting, submissions, user-generated content) | **Hono**, per the sections below. |
+| Only this Next.js app calling its own backend, no webhooks, no other clients planned | **Track A — Static Site.** Next.js Route Handlers + Server Actions only. Skip Hono entirely. Remove the Hono line from the stack list, the `server/` folder and `api/[[...route]]` route from the Folder Structure, and the entire "Hono" subsection under Architectural Patterns. |
+| Any one of: a mobile app or public API planned, incoming webhooks (payments, email delivery, OAuth callbacks), per-route middleware needs (custom rate limits, custom CORS), or real abuse/scale risk (voting, submissions, user-generated content) | **Track B — Hono Backend.** Use Hono per the sections below. |
 
 If it's unclear which row applies, ask the person building the project
 the specific question that resolves it (e.g. "will anything besides this
@@ -75,29 +75,44 @@ app's own pages call this backend?") — then apply the table. Once
 decided, build accordingly and don't relitigate the choice later in the
 project.
 
-This same table logic applies to every stack item below: Cloudflare R2,
-Mailgun, Framer Motion, and shadcn are all defaults for a typical
-full-stack app, not requirements. If a project has no file uploads,
-delete the Cloudflare R2 section; no transactional email, delete Mailgun;
-no need for animation, delete Framer Motion. Decide once per item at
-project start, then move on.
+**Throughout this file, anything labeled "(Track B — Hono only)" applies
+only to projects using the Hono Backend track and should be skipped
+entirely on the Static Site track. Anything not labeled applies to both
+tracks.**
+
+This same table logic applies to every other optional stack item below:
+Cloudflare R2, Resend, Redis, and Framer Motion are defaults for a
+typical full-stack app, not requirements. If a project has no file
+uploads, delete the Cloudflare R2 section; no transactional email, delete
+the Resend section; no need for shared rate limiting or cross-request
+caching, delete the Redis section; no need for animation, delete Framer
+Motion. Decide once per item at project start, then move on. (shadcn/ui
+and other prebuilt component frameworks are never a default option here
+— see "UI Components" below — there is no per-project decision to make
+there; they are simply never used.)
 
 You are working on a production app built with:
 
 - **Runtime:** Bun
 - **Framework:** Next.js (App Router) + TypeScript — always the latest
-  stable release, see note below
-- **API layer:** Hono (mounted as a Next.js route handler, or standalone —
-  see "Architectural Patterns")
-- **Database:** Neon (serverless Postgres) via Drizzle ORM
+  stable release, see note above
+- **API layer:** Hono (Track B only — mounted as a Next.js route
+  handler, or standalone — see "Architectural Patterns"). Skipped
+  entirely on Track A.
+- **Database:** PostgreSQL, connected via a single `DATABASE_URL`, using
+  Drizzle ORM
 - **Validation:** Zod
 - **Auth:** Better-Auth
 - **Object storage:** Cloudflare R2
-- **Email:** Mailgun
-- **Styling:** Tailwind CSS
+- **Email:** Resend
+- **Cache / rate limiting:** Redis (Upstash or self-hosted) via a single
+  shared client in `lib/redis.ts` — see "Redis" under Architectural
+  Patterns for the required key-naming convention
+- **Styling:** Tailwind CSS and/or CSS Modules (see "UI Components" —
+  never a bare global stylesheet)
 - **Animation:** Framer Motion (`motion` package)
-- **Icons:** Iconify (`@iconify/react`) — never hand-draw or hand-code icon
-  SVGs
+- **Icons:** Iconify (`@iconify/react`) — never hand-draw or hand-code
+  icon SVGs
 
 Prioritize clarity and long-term maintainability over cleverness. When in
 doubt, choose the option a new teammate could understand in under a minute.
@@ -113,14 +128,15 @@ running record so progress survives across sessions.
 **Working in stages**
 - Before starting a non-trivial task, briefly outline the stages you'll
   work through (e.g. "1. schema + migration, 2. Zod schema + query
-  functions, 3. Hono route, 4. UI, 5. tests") rather than writing
-  everything at once.
+  functions, 3. Hono route, 4. UI, 5. tests" on Track B, or "1. schema +
+  migration, 2. Zod schema + query functions, 3. Server Action, 4. UI,
+  5. tests" on Track A) rather than writing everything at once.
 - Finish and sanity-check one stage (it compiles, the test passes, the
   route responds) before starting the next. Don't leave a stage half-done
   to jump ahead.
 - If a task is small (a one-line fix, a copy change), staging is
   unnecessary overhead — use judgment. Staging is for work that touches
-  multiple files/layers (schema → query → route → UI).
+  multiple files/layers (schema → query → route/action → UI).
 
 **Verify before building on top — don't stack unverified work**
 The goal of staging is to avoid discovering a foundational problem after
@@ -130,18 +146,18 @@ reworking. To actually prevent that:
   done once you've actually run it (a test, a manual call, a rendered
   page) and confirmed the behavior, not just the syntax.
 - Before building a new feature on top of an existing piece (a query, a
-  route, a shared component), do a quick check that the existing piece
-  still behaves as expected — don't assume last session's work is still
-  correct just because it was marked done in `PROGRESS.md`.
+  route/action, a shared component), do a quick check that the existing
+  piece still behaves as expected — don't assume last session's work is
+  still correct just because it was marked done in `PROGRESS.md`.
 - When a new feature reveals a flaw in something underneath it, fix the
   root cause at its layer immediately rather than patching around it at
   the layer you're currently working in. A workaround in the UI for a bad
   query is exactly the kind of thing that causes repeated backtracking
   later.
 - Check integration points explicitly at each boundary — e.g. after
-  adding a Hono route, actually confirm the exact response shape the
-  frontend will consume, rather than assuming and finding out when the UI
-  stage breaks.
+  adding a route or Server Action, actually confirm the exact response
+  shape the frontend will consume, rather than assuming and finding out
+  when the UI stage breaks.
 - Prefer writing the test for a stage as part of that stage, not deferred
   to a final "add tests" pass — a test written right after the code is
   what catches a regression before the next feature is built on top of
@@ -169,10 +185,115 @@ reworking. To actually prevent that:
 - `PROGRESS.md` is committed to the repo, not gitignored — it's project
   history, not a scratch file.
 
+## Agent Token Efficiency
+
+Minimizing token usage is important — a shorter, well-targeted session
+gets more done per context window and costs less, without sacrificing
+correctness. Treat this as a standing constraint on *how* you work, not
+a reason to skip a step above (staging, verification, tests still apply
+in full).
+
+- **Read narrowly, not exhaustively.** Use targeted line ranges, `grep`,
+  or search instead of dumping an entire large file into context when
+  only one function or section is relevant. Reserve a full-file read for
+  when you genuinely need the whole thing (e.g. before a large refactor).
+- **Edit with diffs, not full rewrites.** Change only the lines that need
+  to change (a targeted edit) rather than regenerating and re-pasting an
+  entire file when a small part of it changed. Reserve a full rewrite for
+  when the majority of the file is actually changing.
+- **Don't re-paste content the person or the repo already has.** Once a
+  file has been shown or written, refer to it by name/path instead of
+  quoting it back in full in a later message or commit description.
+- **Summarize, don't dump, verbose tool output.** Test runs, build logs,
+  and long command output get condensed to the relevant result (pass/
+  fail, the specific error, the specific line) rather than pasted in full
+  when reporting back — paste the raw log only when actually debugging
+  that log line-by-line.
+- **Batch related tool calls** instead of issuing many small sequential
+  ones where a single call (or a small parallel batch) would do.
+- **Keep comments, commit messages, and `PROGRESS.md` entries short and
+  scannable** (see their respective sections above) — a few words that
+  convey the *why* beats a paragraph restating the diff.
+- **Don't restate unchanged code** in an explanation — describe what
+  changed and why, and point to the file/line rather than reproducing
+  surrounding code that didn't change.
+- None of this trades away correctness: still read enough to be sure a
+  change is safe, still verify each stage actually runs (see "Staged
+  Development"), and still write complete tests and documentation where
+  required elsewhere in this file. Token efficiency governs *how much
+  incidental text moves around*, not how carefully the work itself is
+  done.
+
 ## Folder Structure
 
 Organize by **feature**, not by file type. Only put something in a shared
-top-level folder if it's genuinely used across 3+ features.
+top-level folder if it's genuinely used across 3+ features. Use the
+structure matching your track from the Stack Decision above.
+
+**Track A — Static Site (no Hono):**
+
+```
+app/
+  (marketing)/
+    pricing/
+      page.tsx
+  dashboard/
+    settings/
+      page.tsx
+      _components/            # private, route-only components
+      actions.ts              # Server Actions for this route
+  loading.tsx                  # global root loading fallback (renders <LoadingDots />)
+  not-found.tsx                # global root not-found fallback
+  error.tsx                    # global root error boundary
+
+lib/
+  auth/
+    index.ts                   # Better-Auth server instance/config
+    client.ts                  # Better-Auth client for use in components
+  db/
+    index.ts                   # Drizzle client (Postgres connection via DATABASE_URL)
+    schema/
+      users.ts
+      invoices.ts
+      index.ts                 # barrel export of all tables
+    queries/                   # reusable query functions, grouped by domain
+      users.ts
+  storage/
+    r2.ts                      # R2 client + upload/download/delete helpers
+  email/
+    resend.ts                  # Resend client
+    templates/                 # email templates (React Email or plain HTML)
+  redis.ts                    # Redis client + key-prefix helpers (see "Redis")
+  schemas/                     # Zod schemas, grouped by domain
+    user.ts
+    invoice.ts
+  env.ts                       # Zod-validated env var schema, single source of truth
+  errors.ts                    # shared AppError type/class
+  utils.ts                     # small pure helpers only, no business logic
+
+drizzle/
+  migrations/                  # generated Drizzle migrations, never hand-edited
+
+types/
+  index.ts                     # barrel export
+  user.ts                      # domain types NOT already covered by a Zod
+  invoice.ts                   # schema's z.infer<> (see "TypeScript Types")
+
+components/
+  ui/                          # shared, generic, reusable primitives (built
+                                # from scratch by hand — see "UI Components")
+                                # includes loading-dots.tsx (<LoadingDots />),
+                                # the app's one global loading component,
+                                # used by the global loading.tsx and
+                                # anywhere else a small inline loading
+                                # state is needed
+
+PROGRESS.md                    # running log of completed/in-progress/next
+                                # work — see "Staged Development & Progress
+                                # Tracking"
+```
+
+**Track B — With Hono Backend:**
 
 ```
 app/
@@ -186,7 +307,7 @@ app/
   api/
     [[...route]]/
       route.ts                # Hono app mounted here (catch-all)
-  loading.tsx                  # global root loading fallback (bouncing dots)
+  loading.tsx                  # global root loading fallback (renders <LoadingDots />)
   not-found.tsx                # global root not-found fallback
   error.tsx                    # global root error boundary
 
@@ -203,7 +324,7 @@ lib/
     index.ts                   # Better-Auth server instance/config
     client.ts                  # Better-Auth client for use in components
   db/
-    index.ts                   # Drizzle client (Neon connection)
+    index.ts                   # Drizzle client (Postgres connection via DATABASE_URL)
     schema/
       users.ts
       invoices.ts
@@ -213,8 +334,9 @@ lib/
   storage/
     r2.ts                      # R2 client + upload/download/delete helpers
   email/
-    mailgun.ts                 # Mailgun client
+    resend.ts                  # Resend client
     templates/                 # email templates (React Email or plain HTML)
+  redis.ts                    # Redis client + key-prefix helpers (see "Redis")
   schemas/                     # Zod schemas, grouped by domain
     user.ts
     invoice.ts
@@ -233,23 +355,28 @@ types/
 
 components/
   ui/                          # shared, generic, reusable primitives (built
-                                # from scratch — see "UI Components")
-                                # includes loading-dots.tsx, the shared
-                                # bouncing-dots indicator used by the global
-                                # loading.tsx and anywhere else a small
-                                # inline loading state is needed
+                                # from scratch by hand — see "UI Components")
+                                # includes loading-dots.tsx (<LoadingDots />),
+                                # the app's one global loading component,
+                                # used by the global loading.tsx and
+                                # anywhere else a small inline loading
+                                # state is needed
 
 PROGRESS.md                    # running log of completed/in-progress/next
                                 # work — see "Staged Development & Progress
                                 # Tracking"
 ```
 
-Rules:
+Rules (both tracks):
 - Business logic (queries, R2 operations, email sending) never lives inside
-  a component or route handler directly — it lives in `lib/` and is called
-  from there.
-- Hono routes in `server/routes/` stay thin: parse/validate input, call a
-  `lib/` function, return a response. No business logic inline in a route.
+  a component, Server Action, or route handler directly — it lives in
+  `lib/` and is called from there.
+- (Track B) Hono routes in `server/routes/` stay thin: parse/validate
+  input, call a `lib/` function, return a response. No business logic
+  inline in a route.
+- (Track A) Server Actions in `actions.ts` files stay equally thin:
+  parse/validate input, call a `lib/` function, return a result. No
+  business logic inline in an action.
 - Drizzle schema files are the single source of truth for table shape —
   never define the same shape twice in a separate type.
 - Do not create new top-level folders without proposing it first.
@@ -259,8 +386,6 @@ Rules:
 - Optimize for the reader, not the writer. A few extra lines of clear code
   beats a dense one-liner.
 - Functions do one thing. If describing it needs "and," split it.
-- Soft limits (flag if exceeding, don't silently ignore): components ~150
-  lines, functions ~40 lines, files ~300 lines.
 - Name things for what they are, not how they're implemented
   (`getActiveUsers`, not `queryUsersWhereStatusFlag`).
 - No magic numbers/strings — extract to named constants.
@@ -271,8 +396,8 @@ Rules:
 ### File size — split, don't dump
 
 Never let one file accumulate everything related to a feature. These are
-hard limits, not suggestions — if you're about to exceed one, stop and
-split instead of pushing through:
+the hard limits — if you're about to exceed one, stop and split instead
+of pushing through:
 
 - **Components:** ~120 lines. If a component is growing past this, pull out
   sub-sections into their own components (even small, single-use ones) in
@@ -280,9 +405,9 @@ split instead of pushing through:
   describe *one* piece of UI, not a whole page's worth of markup.
 - **Functions:** ~30–40 lines. If a function needs a comment to separate
   "step 1 / step 2 / step 3," those steps are probably separate functions.
-- **Route handlers (Hono) and Server Actions:** thin by definition — parse
-  input, call a `lib/` function, return a response. If a handler is doing
-  more than that, the extra logic belongs in `lib/`.
+- **Route handlers (Hono, Track B) and Server Actions (Track A):** thin
+  by definition — parse input, call a `lib/` function, return a response.
+  If a handler is doing more than that, the extra logic belongs in `lib/`.
 - **Files overall:** ~250–300 lines is a signal to split, not a hard wall
   to hit exactly. When a file crosses it, look for a natural seam
   (a sub-component, a helper module, a second concern) and extract it.
@@ -294,15 +419,16 @@ arbitrarily by line count — e.g. `invoice-form.tsx` +
 
 ## Architectural Patterns
 
-**Next.js**
+**Next.js (both tracks)**
 - Server Components by default. Add `"use client"` only when the component
   needs interactivity, browser APIs, or hooks.
 - Pages fetch data directly in Server Components (via `lib/db/queries`) when
-  the data is simple and page-specific. Use the Hono API layer when the
-  same logic needs to be reused across the web app and external/mobile
-  clients, or needs its own middleware chain (e.g. rate limiting, webhooks).
+  the data is simple and page-specific. On Track B, use the Hono API layer
+  only when the same logic needs to be reused across the web app and
+  external/mobile clients, or needs its own middleware chain (e.g. rate
+  limiting, webhooks). On Track A, all mutations go through Server Actions.
 
-**Hono**
+**Hono (Track B — Hono only. Skip this entire subsection on Track A.)**
 - One Hono app assembled in `server/index.ts`, mounted into Next.js via the
   catch-all route handler at `app/api/[[...route]]/route.ts`.
 - Group routes by domain (`server/routes/users.ts`, etc.) and compose them
@@ -312,90 +438,139 @@ arbitrarily by line count — e.g. `invoice-form.tsx` +
 - Auth-gated routes use a shared Better-Auth middleware — never re-check
   sessions ad hoc inside individual handlers.
 
-**Drizzle / Neon**
+**Drizzle / PostgreSQL (both tracks)**
 - All queries go through Drizzle — no raw SQL unless Drizzle genuinely
   can't express it, and if so, isolate it in `lib/db/queries` with a comment
   explaining why.
 - Schema changes always go through `drizzle-kit generate` — migrations are
   generated, never hand-written or hand-edited.
 - Reusable queries live in `lib/db/queries/<domain>.ts`, not inlined in
-  routes or components. A query function should be named for the question
-  it answers (`getInvoicesForUser`, not `dbQuery1`).
+  routes, actions, or components. A query function should be named for the
+  question it answers (`getInvoicesForUser`, not `dbQuery1`).
+- The database is a plain PostgreSQL instance addressed via a single
+  `DATABASE_URL` connection string — see "Performance & Caching" for
+  connection-pooling guidance.
 
-**Zod**
-- Every external input boundary (form submission, Hono route body/params,
-  webhook payload, R2 upload metadata) is validated with a Zod schema
-  before use.
+**Zod (both tracks)**
+- Every external input boundary (form submission, Server Action input,
+  Hono route body/params, webhook payload, R2 upload metadata) is
+  validated with a Zod schema before use.
 - Schemas live in `lib/schemas/`, one file per domain, and are the source
   of truth for the corresponding TypeScript type via `z.infer<>` — don't
   hand-write a parallel interface.
 
-**Better-Auth**
+**Better-Auth (both tracks)**
 - Auth config and server instance live in `lib/auth/index.ts` only — never
   instantiate Better-Auth elsewhere.
 - Session checks in Server Components use the server instance directly;
-  Hono routes use the shared middleware; client components use
+  Server Actions check the session at the top of the action (Track A);
+  Hono routes use the shared middleware (Track B); client components use
   `lib/auth/client.ts`.
 - Never roll custom session/JWT handling alongside Better-Auth — if
   something's missing, extend Better-Auth's config/plugins first.
 
-**Cloudflare R2**
+**Cloudflare R2 (both tracks)**
 - All R2 access goes through `lib/storage/r2.ts` (upload, signed URL
   generation, delete). No direct S3-client calls scattered elsewhere.
 - Never expose R2 credentials to the client — uploads happen via a
-  server-generated signed URL or a server-side route, never direct
+  server-generated signed URL or a server-side route/action, never direct
   client-to-R2 with static keys.
 - Validate file type/size (Zod or manual checks) before generating an
   upload URL.
 
-**Mailgun**
-- All email sending goes through `lib/email/mailgun.ts`. Templates live in
+**Resend (both tracks)**
+- All email sending goes through `lib/email/resend.ts`. Templates live in
   `lib/email/templates/`, kept separate from send logic.
-- Don't inline HTML strings for emails in route handlers or components.
+- Don't inline HTML strings for emails in route handlers, Server Actions,
+  or components.
 
-**UI Components**
-- Build components from scratch in `components/ui/` for full control over
-  markup, styling, and behavior — do not pull in shadcn/ui or a similar
-  component library by default.
-- shadcn (or another library) may be used only if explicitly requested for
-  a specific case, and even then, treat its output as a starting point to
-  adapt, not a dependency to leave untouched.
-- Style with Tailwind utility classes directly in JSX by default. Extract
-  a class string to a variable or a `cva`-style variant helper only once a
-  component has several visual variants — don't prematurely abstract.
-- Fall back to vanilla CSS (a co-located `.module.css` file) when Tailwind
-  genuinely can't express what's needed, or when forcing it into utility
-  classes would be noticeably harder to read/maintain than a few lines of
-  real CSS. Examples: complex keyframe animations Framer Motion doesn't
-  cover, intricate `:has()`/sibling selectors, gradient masks, or
-  fine-grained print styles. This is an exception for genuine limitations,
-  not a way to avoid learning a Tailwind utility — if there's a
-  reasonably direct Tailwind equivalent, use it instead.
-- When using vanilla CSS, co-locate it with the component
+**Redis (both tracks)**
+- One shared Redis client instantiated in `lib/redis.ts` — never call
+  `new Redis(...)` (or the equivalent for your client library) inline in
+  a route, action, or component.
+- **Every key must be prefixed with the app's name**, so multiple apps can
+  safely share one Redis instance without key collisions. Format:
+  `<appname>:<domain>:<identifier>`, colon-separated, all lowercase. For
+  an app at `example.com`, that's `example:<domain>:<identifier>` — e.g.
+  `example:ratelimit:user:42`, `example:sessions:abc123`,
+  `example:cache:invoices:user:42`. Never write a bare, unprefixed key
+  (`user:42`, `ratelimit:42`) directly against the shared instance.
+- Define the app prefix once as a constant in `lib/redis.ts` (e.g.
+  `const APP_PREFIX = "example"`) and build every key through a small
+  helper (`buildKey("ratelimit", "user", userId)` →
+  `example:ratelimit:user:42`) rather than concatenating prefix strings
+  ad hoc at each call site — this is what makes a future rename or a
+  shared-instance migration a one-line change instead of a grep-and-replace.
+- Set an explicit TTL on every cache entry — don't let a key live forever
+  unless it's intentionally permanent (e.g. a long-lived session key with
+  its own explicit expiry). A key with no TTL and no clear reason for one
+  is a slow memory leak in the Redis instance.
+- Used for: rate-limiter counters shared across serverless/edge instances
+  (see "Concurrency & Efficiency"), caching expensive or third-party
+  results (see "Third-Party API Usage"), and any other cross-request state
+  that doesn't belong in Postgres. Session storage itself stays with
+  Better-Auth's configured store unless there's a specific reason to move
+  it to Redis.
+
+**UI Components (both tracks)**
+- Build every component from scratch, by hand, in `components/ui/` (or a
+  route's `_components/`) — this is what gives full control over markup,
+  styling, and behavior, and means any component can be freely modified
+  later without fighting a library's internal structure or overrides.
+- **Never use shadcn/ui or any other prebuilt component framework/kit**
+  (Radix-based kits, Chakra, MUI, Mantine, Ant Design, or similar) — no
+  exceptions, even "just to start" or "just this one form." If a pattern
+  feels like it needs a whole library, build the minimal hand-written
+  version of just what's needed instead.
+- **Never rely on a single global stylesheet** (`globals.css` or
+  equivalent) for component or page styling. A global stylesheet may exist
+  only for genuinely global concerns — a CSS reset, `:root` design-token
+  custom properties, `@font-face` declarations, base typography on `html`/
+  `body` — never for styling a specific component or page, which leaks
+  scope and causes specificity fights as the app grows. Before adding
+  anything to `globals.css`, ask "does every page need this?" — if not, it
+  belongs in Tailwind classes or a CSS Module instead.
+- **Pick one primary styling approach** for the project — Tailwind utility
+  classes or CSS Modules — and use it consistently by default. Only use
+  both together when there's a genuine need (e.g. Tailwind for layout and
+  spacing throughout, with CSS Modules reserved specifically for the
+  complex-CSS exceptions below) — don't reach for both as a default
+  combination without a concrete reason tied to a specific piece of UI.
+- Style with Tailwind utility classes directly in JSX by default, when
+  Tailwind is the (or a) chosen approach. Extract a class string to a
+  variable or a `cva`-style variant helper only once a component has
+  several visual variants — don't prematurely abstract.
+- Fall back to CSS Modules when Tailwind genuinely can't express what's
+  needed, or when forcing it into utility classes would be noticeably
+  harder to read/maintain than a few lines of real CSS. Examples: complex
+  keyframe animations Framer Motion doesn't cover, intricate `:has()`/
+  sibling selectors, gradient masks, or fine-grained print styles. This is
+  an exception for genuine limitations, not a way to avoid learning a
+  Tailwind utility — if there's a reasonably direct Tailwind equivalent,
+  use it instead.
+- When using CSS Modules, co-locate the file with the component
   (`invoice-chart.module.css` next to `invoice-chart.tsx`), use CSS
-  Modules (not global stylesheets) to avoid class name collisions, and
+  Modules (not a global stylesheet) to avoid class name collisions, and
   leave a short comment on why Tailwind wasn't used for that piece.
 - Keep components accessible by default: semantic HTML elements, proper
   `aria-*` attributes, visible focus states — don't rely on a library to
   provide this for you since we're not using one.
 
-**Icons**
+**Icons (both tracks)**
 - All icons come from Iconify (`@iconify/react`'s `<Icon icon="..." />`)
   — never hand-write icon SVGs or copy-paste one-off SVG markup.
 - Pick one or two icon sets for visual consistency (e.g. `lucide` or
   `heroicons` via Iconify) rather than mixing icon sets across the app.
 - For social/brand icons specifically, use the **Akar Icons** set via
-  Iconify (e.g. `akar-icons:github-fill`, `akar-icons:telegram-fill`,
-  `akar-icons:discord-fill`) rather than pulling social logos from the
-  general-purpose icon set. Akar Icons names are consistently suffixed
-  `-fill` (it doesn't offer separate outline variants for most icons) —
-  don't guess at `-filled`/`-outlined`/`-outline-fill` variants, they
-  don't exist in this set. Verify exact names on
-  icon-sets.iconify.design/akar-icons before using.
+  Iconify rather than pulling social logos from the general-purpose icon
+  set, and rather than hand-drawing a brand icon — never hand-draw a
+  social/brand icon when Akar Icons already covers it. Look up the exact
+  icon name on icon-sets.iconify.design/akar-icons before using it; don't
+  guess at a name or a suffix.
 - Wrap `<Icon>` in a shared component if you need consistent sizing/color
   defaults across the app, rather than repeating props everywhere.
 
-**Animation**
+**Animation (both tracks)**
 - Use Framer Motion (`motion`) for transitions, layout animation, and
   gesture-driven interaction — not raw CSS keyframes for anything beyond a
   trivial hover state.
@@ -404,11 +579,12 @@ arbitrarily by line count — e.g. `invoice-form.tsx` +
   wrap the animated presentation in its own small component.
 - Respect `prefers-reduced-motion` for non-essential animations.
 
-**General**
+**General (both tracks)**
 - State management: built-in React state/context first. No new state
   library without explicit sign-off.
 - Errors are handled explicitly (`error.tsx`, try/catch with meaningful
-  messages, typed error responses from Hono) — no silent failures.
+  messages, typed error responses from Server Actions or Hono) — no
+  silent failures.
 
 ## Loading & Optimistic UI
 
@@ -426,23 +602,27 @@ the right one for the situation, not whichever is more familiar.
   skeleton that doesn't match the final layout is worse than a spinner.
 - A global `app/loading.tsx` is required at the root — this is the
   fallback for full page navigations before route-specific content is
-  ready. Use a simple bouncing-dots indicator here (three dots,
-  staggered opacity/translateY animation via Framer Motion), centered on
-  the viewport — not a full-page skeleton, since the root loading state
-  doesn't know the shape of the destination page's content. Respect
-  `prefers-reduced-motion` here too — fall back to a static/non-animated
-  dots or pulsing-opacity treatment rather than the staggered bounce.
-- Build the bouncing-dots indicator as a single shared component
-  (`components/ui/loading-dots.tsx`) rather than reimplementing it inline
-  in `app/loading.tsx` — reuse it anywhere else a small inline loading
+  ready. It renders the app's **global loading component**: a simple
+  bouncing three-dot indicator (staggered opacity/translateY animation
+  via Framer Motion), centered on the viewport — not a full-page
+  skeleton, since the root loading state doesn't know the shape of the
+  destination page's content. Respect `prefers-reduced-motion` here too
+  — fall back to a static/non-animated dots or pulsing-opacity treatment
+  rather than the staggered bounce.
+- The bouncing three-dot indicator is built once as a single shared
+  component, `components/ui/loading-dots.tsx` (`<LoadingDots />`), and
+  that component **is** the app's one canonical global loading
+  indicator — don't hand-roll a spinner, a different dot style, or any
+  other loading visual elsewhere in the app. `app/loading.tsx` renders
+  it; reuse the same component anywhere else a small inline loading
   state is needed (e.g. inside a button's pending state) instead of
-  hand-rolling a new spinner each time.
+  introducing a second loading design.
 - `loading.tsx` files render into the `children` slot of the nearest
   layout, not as a standalone page — if the header/footer live in
   `app/layout.tsx` (or a nested layout), they'll render around the
   loading state automatically. Never manually re-import or re-render the
   header/footer inside a `loading.tsx` file itself; it should contain
-  only the loading indicator, nothing else. If a fallback is showing a
+  only `<LoadingDots />`, nothing else. If a fallback is showing a
   header/footer twice, that's a sign the header/footer got duplicated
   into the loading file instead of living solely in the shared layout —
   fix it there, not by hiding one copy with CSS. The same slot behavior
@@ -450,21 +630,22 @@ the right one for the situation, not whichever is more familiar.
   header/footer into those either.
 - Route-specific `loading.tsx` files (e.g. `app/dashboard/loading.tsx`)
   should still use content-matched skeletons where the destination
-  layout is known — the bouncing-dots pattern is reserved for the global
-  root fallback only, not a substitute for a real skeleton wherever the
-  target layout is predictable.
+  layout is known — `<LoadingDots />` is reserved for the global root
+  fallback (and small inline pending states) only, not a substitute for a
+  real skeleton wherever the target layout is predictable.
 
 **Optimistic updates — for writes (mutations/actions)**
 - Use when the user takes an action and the likely result is already
   known: toggling, liking, marking complete, submitting a comment.
 - Implement with React's `useOptimistic` paired with a Server Action (or
-  a Hono mutation), not manual local-state juggling.
+  a Hono mutation on Track B), not manual local-state juggling.
 - Reserve optimistic updates for actions with a low, acceptable failure
   rate. For actions with real failure modes worth surfacing clearly
   (payments, file uploads to R2, anything Better-Auth-gated with
   meaningful consequences), wait for confirmation and show explicit
   pending/error states instead (e.g. a disabled button with the shared
-  `loading-dots` indicator or a spinner icon, not an optimistic result).
+  `<LoadingDots />` global loading component or a spinner icon, not an
+  optimistic result).
 - Always handle the rollback path — if the mutation fails, revert the
   optimistic state and surface the error (via the shared `AppError`
   shape), don't leave the UI showing a result that didn't actually happen.
@@ -473,6 +654,8 @@ the right one for the situation, not whichever is more familiar.
 data → optimistic. Don't reach for optimistic updates just to avoid
 building a skeleton, and don't skeleton-wrap something that should feel
 instant.
+
+## TypeScript Types
 
 - Centralize types in the `types/` folder — don't scatter one-off
   `interface`/`type` declarations across component files.
@@ -484,8 +667,8 @@ instant.
   export type { User } from "@/lib/schemas/user";
   ```
 - `types/` is for types that aren't derived from a schema: shared
-  request/response shapes for Hono endpoints, component prop types shared
-  across multiple components, and generic utility types.
+  request/response shapes for Hono endpoints (Track B), component prop
+  types shared across multiple components, and generic utility types.
 - A component's own props type (used only by that component) can stay
   local to the component file — it doesn't need to move to `types/`.
 - Never use `any`. Use `unknown` and narrow, or define the proper type.
@@ -497,12 +680,35 @@ instant.
   (Vercel/Cloudflare) for staging/production.
 - Maintain an `.env.example` with every required key present but empty/
   placeholder values, kept in sync whenever a new env var is added.
+  **Group related variables under a comment header by concern** — don't
+  dump every key as one flat, unordered list. For example:
+  ```
+  # Database
+  DATABASE_URL=
+
+  # Auth (Better-Auth)
+  BETTER_AUTH_SECRET=
+  BETTER_AUTH_URL=
+
+  # Storage (Cloudflare R2)
+  R2_ACCESS_KEY_ID=
+  R2_SECRET_ACCESS_KEY=
+  R2_BUCKET_NAME=
+
+  # Email (Resend)
+  RESEND_API_KEY=
+
+  # Cache / Rate Limiting (Redis)
+  REDIS_URL=
+  ```
+  Add new groups (or new keys under an existing group) as the project
+  grows, rather than appending ungrouped keys to the bottom of the file.
 - Validate env vars at startup with a Zod schema (`lib/env.ts`) — fail fast
   with a clear error if something required is missing, rather than letting
-  a `undefined` leak into a Drizzle/R2/Mailgun client at runtime.
+  a `undefined` leak into a Drizzle/R2/Resend client at runtime.
 - Naming: `SCREAMING_SNAKE_CASE`, prefixed by concern where it helps
   disambiguate (`DATABASE_URL`, `R2_ACCESS_KEY_ID`, `R2_BUCKET_NAME`,
-  `MAILGUN_API_KEY`, `BETTER_AUTH_SECRET`).
+  `RESEND_API_KEY`, `BETTER_AUTH_SECRET`, `REDIS_URL`).
 - Client-exposed env vars (Next.js `NEXT_PUBLIC_*`) must never contain
   secrets — only public config (e.g. a public bucket URL). Double-check
   before prefixing anything with `NEXT_PUBLIC_`.
@@ -527,8 +733,8 @@ table and don't relitigate it later in the project.
 
 | If local dev... | Use |
 |---|---|
-| Only needs the Next.js app running locally, and the database is a Neon dev/preview branch (already hosted, no local Postgres needed) | **No Docker Compose for local dev.** Docker is prod-build-only; run `bun run dev` locally against a Neon branch as normal. |
-| Needs a fully offline-capable local environment (no network dependency on Neon), or the team explicitly wants dev/prod parity via containers | **Docker Compose for local dev**, containerizing only the services that need it (e.g. a local Postgres) — don't containerize Neon-backed services that are already serverless/hosted, since that's redundant infrastructure with nothing to gain from it. |
+| Only needs the Next.js app running locally, and the database is a hosted PostgreSQL instance reachable via `DATABASE_URL` (no local Postgres needed) | **No Docker Compose for local dev.** Docker is prod-build-only; run `bun run dev` locally against the hosted database as normal. |
+| Needs a fully offline-capable local environment (no network dependency on the hosted database), or the team explicitly wants dev/prod parity via containers | **Docker Compose for local dev**, containerizing only the services that need it (e.g. a local Postgres instance) — don't containerize a hosted, already-reachable Postgres service via `DATABASE_URL` unless there's a specific offline-dev reason to. |
 
 ## Docker & Deployment
 
@@ -546,35 +752,38 @@ table and don't relitigate it later in the project.
 - `.dockerignore` must exclude `.env*`, `node_modules`, `.next/cache`,
   `.git`, and any local-only artifacts — never bake env files or secrets
   into an image layer.
-- Runtime env vars (`DATABASE_URL`, R2/Mailgun/Better-Auth secrets) are
-  injected at container start (platform env config, `--env-file`, or
+- Runtime env vars (`DATABASE_URL`, `REDIS_URL`, R2/Resend/Better-Auth
+  secrets) are injected at container start (platform env config, `--env-file`, or
   orchestrator secrets) — never hard-coded or passed as a Docker `ARG`,
   since build args can leak into image history/layers.
 - Expose a lightweight `GET /api/health` route for container
   orchestrator liveness/readiness probes — it should only confirm the
-  process is up, never call the DB, R2, or Mailgun (a slow/down
+  process is up, never call the DB, R2, or Resend (a slow/down
   third-party shouldn't fail your health check).
 - If using Docker Compose for local dev, only containerize services that
-  need it (e.g. a local Postgres if not using a Neon dev branch) — Neon
-  is already hosted/serverless, so don't add a redundant local Postgres
-  container unless there's a specific offline-dev reason to.
+  need it (e.g. a local Postgres if not using a hosted `DATABASE_URL`
+  for dev) — don't add a redundant local Postgres container unless
+  there's a specific offline-dev reason to.
 - Confirm the final image size and layer count stay reasonable
   (multi-stage build should mean the runner stage is small) — a bloated
   image is a sign a stage is copying more than it needs to.
 
 ## Security Practices
 
-- Every Hono route that mutates or reads user-specific data checks
-  ownership/authorization explicitly — never trust a client-supplied
-  `userId`/`id` param without verifying it belongs to the authenticated
-  session.
-- Rate-limit sensitive routes (auth endpoints, file uploads, email-sending
-  routes) at the Hono middleware level — don't rely on Cloudflare alone.
+- Every Server Action (Track A) or Hono route (Track B) that mutates or
+  reads user-specific data checks ownership/authorization explicitly —
+  never trust a client-supplied `userId`/`id` param without verifying it
+  belongs to the authenticated session.
+- (Track B) Rate-limit sensitive routes (auth endpoints, file uploads,
+  email-sending routes) at the Hono middleware level — don't rely on
+  Cloudflare alone. (Track A) Apply the same rate limiting to the
+  equivalent Server Actions via a shared store (see "Concurrency &
+  Efficiency").
 - Validate file uploads for both MIME type and size before generating an
   R2 signed URL — a Zod check on the declared type isn't enough on its
   own; verify server-side where feasible.
-- Set CORS explicitly on the Hono app (allowed origins, methods, headers)
-  — never wildcard `*` in production.
+- (Track B) Set CORS explicitly on the Hono app (allowed origins, methods,
+  headers) — never wildcard `*` in production.
 - Escape/sanitize any user-generated content rendered as HTML (e.g. in
   emails or dashboards) to prevent injection — don't assume Zod validation
   alone covers this.
@@ -589,17 +798,18 @@ table and don't relitigate it later in the project.
 - Define a shared `AppError` type/class (`lib/errors.ts`) with a `code` and
   a user-safe `message` — throw/return this instead of raw `Error` objects
   or ad hoc string messages.
-- Hono error responses follow one consistent JSON shape across every route
-  (e.g. `{ error: { code, message } }`) so the frontend can handle errors
-  generically instead of per-endpoint.
-- Never leak internal details (stack traces, raw DB errors, raw Mailgun/R2
+- (Track B) Hono error responses follow one consistent JSON shape across
+  every route (e.g. `{ error: { code, message } }`) so the frontend can
+  handle errors generically instead of per-endpoint. (Track A) Server
+  Actions return the same consistent shape for their error case.
+- Never leak internal details (stack traces, raw DB errors, raw Resend/R2
   provider errors) to the client — log the full detail server-side, return
   a sanitized message to the client.
 - Use Next.js `error.tsx` boundaries for route-level UI errors; don't let
   unhandled exceptions render a blank page.
-- Log server-side errors with enough context to debug (route, user id if
-  available, relevant input) but never log secrets, full request bodies
-  containing PII, or auth tokens.
+- Log server-side errors with enough context to debug (route/action, user
+  id if available, relevant input) but never log secrets, full request
+  bodies containing PII, or auth tokens.
 - Don't swallow errors silently (`catch {}` with no action) — at minimum,
   log them; if recoverable, handle explicitly, if not, rethrow as an
   `AppError`.
@@ -610,10 +820,11 @@ table and don't relitigate it later in the project.
   segment config intentionally rather than accepting whatever the default
   happens to be — comment when a page or fetch is intentionally dynamic
   vs cached.
-- Neon is serverless Postgres — be mindful of connection limits. Use a
-  single shared Drizzle client instance (`lib/db/index.ts`) with a pooled/
-  serverless driver (e.g. `@neondatabase/serverless`), never open a new
-  connection per request.
+- Be mindful of PostgreSQL connection limits. Use a single shared Drizzle
+  client instance (`lib/db/index.ts`) with proper connection pooling (a
+  `pg` `Pool`, or a serverless/edge-friendly Postgres driver if deploying
+  to an edge or serverless runtime) — never open a new connection per
+  request.
 - Batch or paginate large Drizzle queries — never fetch an unbounded list
   and filter/paginate in application code.
 - R2 signed URLs should have a sensible, explicit expiry (short for
@@ -644,19 +855,19 @@ table and don't relitigate it later in the project.
   ```
 - **No N+1 queries.** Never loop over rows and issue a Drizzle query per
   row. Use a relational `with` query, a `join`, or a single `inArray()`
-  lookup instead. Each extra round-trip to Neon adds real latency — treat
-  a query-in-a-loop as a bug, not a style nitpick.
+  lookup instead. Each extra round-trip to Postgres adds real latency —
+  treat a query-in-a-loop as a bug, not a style nitpick.
 - **Know which cache layer you're using:**
   - React's `cache()` — dedupes identical calls within a single render
     pass (e.g. the same `getUser` called from a layout and a page).
   - Next.js `unstable_cache` / `revalidateTag` / `revalidatePath` — cross-
     request caching with explicit invalidation; use this for data that's
     expensive to compute and safe to serve slightly stale.
-  - Hono-level response caching — for computed endpoints hit repeatedly
-    with the same input (e.g. a public stats endpoint).
+  - Hono-level response caching (Track B) — for computed endpoints hit
+    repeatedly with the same input (e.g. a public stats endpoint).
   Pick the right one deliberately; don't stack ad hoc caching on top of
   Next.js's own fetch cache without understanding the interaction.
-- **Don't block the response on slow side effects.** Sending a Mailgun
+- **Don't block the response on slow side effects.** Sending a Resend
   email or another non-critical side effect shouldn't hold up the
   response the user is waiting on. Fire it after returning the response
   (`after()` in Next.js, or a queue) and handle its failure independently
@@ -664,24 +875,27 @@ table and don't relitigate it later in the project.
   action.
 - **Rate limiter state must be shared, not in-memory.** A counter in a
   module-level variable doesn't work across serverless/edge instances —
-  use a shared store (Cloudflare KV, Durable Objects, or Upstash Redis)
-  for any rate limit that needs to hold across requests.
+  use the shared Redis client (`lib/redis.ts`) with a properly prefixed
+  key (e.g. `example:ratelimit:route:ip`) for any rate limit that needs to
+  hold across requests.
 - **Stream large responses** instead of buffering the whole payload —
   Next.js streaming SSR for large pages, Hono's streaming helpers for
-  large API responses — rather than assembling everything in memory
-  before sending.
+  large API responses (Track B) — rather than assembling everything in
+  memory before sending.
 
 ## Third-Party API Usage & Credit Limits
 
-Third-party services (Mailgun, R2, or any future integration billed by
+Third-party services (Resend, R2, or any future integration billed by
 usage/request count) are a real cost, not just a technical dependency.
 Treat their limits as seriously as a rate limit on your own API.
 
+- IMPORTANT/MANDATORY: Use rtk-ai and caveman skill in ultra settings.
 - **Cache before you call.** If a third-party response doesn't change
   often (lookup data, computed results, anything not user-specific and
-  real-time), cache it (`unstable_cache`/KV/Redis with a sensible TTL)
-  instead of re-fetching on every request. Never call a paid API inside a
-  loop or on every render when the result could be cached.
+  real-time), cache it (`unstable_cache`, or the shared Redis client with
+  a properly prefixed key and a sensible TTL) instead of re-fetching on
+  every request. Never call a paid API inside a loop or on every render
+  when the result could be cached.
 - **Dedupe concurrent identical calls.** If multiple requests could
   trigger the same third-party call at the same time (e.g. several users
   loading a page that hits the same external lookup), dedupe with
@@ -704,7 +918,7 @@ Treat their limits as seriously as a rate limit on your own API.
   runaway loop or unexpected traffic spike is caught before it exhausts a
   credit limit.
 - **Batch when the provider supports it.** Prefer a bulk endpoint (e.g.
-  sending multiple emails in one Mailgun batch call, if available) over N
+  sending multiple emails in one Resend batch call, if available) over N
   individual calls when the provider offers a batched alternative.
 - **New third-party integrations go through the Dependency Policy above**
   — including a look at the provider's rate limits and pricing tiers
@@ -739,9 +953,9 @@ Treat their limits as seriously as a rate limit on your own API.
 ## Dependency Policy
 
 - Before adding a new package, check whether the existing stack (Bun,
-  Next.js, Hono, Drizzle, Zod, Better-Auth, Tailwind, Framer Motion,
-  Iconify) already solves the problem — most needs should be met without
-  a new dependency.
+  Next.js, Hono, Drizzle, Zod, Better-Auth, Redis, Tailwind, Framer
+  Motion, Iconify) already solves the problem — most needs should be met
+  without a new dependency.
 - Propose new dependencies explicitly (name + why + what it replaces or
   adds) rather than installing silently as part of an unrelated task.
 - Prefer well-maintained, widely-used packages with active releases over
@@ -749,13 +963,16 @@ Treat their limits as seriously as a rate limit on your own API.
   before adding.
 - Pin dependency versions deliberately; don't introduce a dependency with
   a wide-open version range without reason.
+- Component frameworks (shadcn/ui, Radix-based kits, Chakra, MUI,
+  Mantine, or similar) are excluded from this policy entirely — they are
+  never added, proposed, or discussed as an option. See "UI Components."
 
 ## Documentation
 
-- Every exported function/type in `lib/`, `server/`, and `types/` gets a
-  short doc comment (what it does, params, and anything non-obvious about
-  behavior) — internal, unexported helpers don't need this unless the
-  logic is genuinely non-obvious.
+- Every exported function/type in `lib/`, `server/` (Track B), and
+  `types/` gets a short doc comment (what it does, params, and anything
+  non-obvious about behavior) — internal, unexported helpers don't need
+  this unless the logic is genuinely non-obvious.
 - Document *why*, not *what the code already says* — a doc comment
   restating the function signature in prose adds nothing.
 - Keep a root `README.md` current with setup steps (env vars, `bun
@@ -771,8 +988,8 @@ Treat their limits as seriously as a rate limit on your own API.
   `invoice-schema.ts`).
 - Components: `PascalCase` matching the default export (`UserProfileCard`).
 - Hooks: `camelCase` prefixed with `use` (`useAuthStatus`).
-- Hono route files: named after the resource, plural (`users.ts`,
-  `invoices.ts`).
+- (Track B) Hono route files: named after the resource, plural
+  (`users.ts`, `invoices.ts`).
 - Server Actions / query functions: verb-first, descriptive
   (`createInvoice`, `getInvoicesForUser`) — never `handler`, `doThing`, or
   `helper`.
@@ -790,8 +1007,12 @@ Treat their limits as seriously as a rate limit on your own API.
   `invoice.ts`, `api.ts`), one barrel `index.ts` re-exporting the rest.
 - Shared animation variants (Framer Motion): suffix with `Variants`
   (`fadeInVariants`, `slideUpVariants`).
-- Vanilla CSS fallback files: `kebab-case.module.css`, matching the
-  component name (`invoice-chart.tsx` → `invoice-chart.module.css`).
+- CSS Module files: `kebab-case.module.css`, matching the component name
+  (`invoice-chart.tsx` → `invoice-chart.module.css`).
+- Redis keys: lowercase, colon-separated, always `<appname>:<domain>:
+  <identifier>` (e.g. `example:ratelimit:user:42`) — built through the
+  shared `buildKey` helper in `lib/redis.ts`, never concatenated ad hoc
+  at the call site.
 
 ## Testing Expectations
 
@@ -799,38 +1020,42 @@ Three distinct levels of testing apply here — know which one a given
 piece of work actually needs rather than defaulting to one or skipping
 the question entirely.
 
-**Unit tests — always, for logic**
+**Unit tests — always, for logic (both tracks)**
 - Use Bun's built-in test runner (`bun test`) unless the project has
   already standardized on something else.
 - Every `lib/db/queries` function, every Zod schema, and every pure
   helper needs a unit test covering the happy path and at least one
   failure/validation case.
-- Mock external services at the boundary — R2 client, Mailgun client, and
+- Mock external services at the boundary — R2 client, Resend client, and
   Better-Auth session checks are mocked in unit tests; don't hit a real
-  external service or a real Neon database here.
+  external service or a real database here.
 - Zod schemas: test that invalid input is rejected, not just that valid
   input passes.
 - This is the default, minimum bar for any new logic. Skipping unit tests
   isn't a judgment call — write them.
 
-**Integration tests — for anything crossing a real boundary**
-- Use when a test needs to exercise a Hono route end-to-end, a real
-  database query against actual Postgres, or the interaction between two
-  internal layers (e.g. a route calling a query calling the DB).
-- Use a separate test/branch database (e.g. a Neon branch) for these —
+**Integration tests — for anything crossing a real boundary (both tracks)**
+- Use when a test needs to exercise a Hono route end-to-end (Track B) or
+  a Server Action end-to-end (Track A), a real database query against
+  actual Postgres, or the interaction between two internal layers (e.g.
+  a route/action calling a query calling the DB).
+- Use a separate test database (a dedicated Postgres database/schema, or
+  a branch if your Postgres provider supports branching) for these —
   never run integration tests against the production or shared dev
   database.
-- Every Hono route needs at least one integration test hitting the real
-  route (not just the underlying function in isolation).
-- Needed for: any new API route, any auth-gated flow, any Drizzle query
-  with joins or relational complexity worth verifying against a real DB.
+- (Track B) Every Hono route needs at least one integration test hitting
+  the real route (not just the underlying function in isolation).
+  (Track A) Every Server Action needs the equivalent.
+- Needed for: any new API route or Server Action, any auth-gated flow,
+  any Drizzle query with joins or relational complexity worth verifying
+  against a real DB.
 
-**E2E tests — only for critical user-facing flows**
+**E2E tests — only for critical user-facing flows (both tracks)**
 - Use a browser-driving tool (e.g. Playwright) to test a full flow
   through the actual UI, as a real user would.
 - Reserve these for flows where a break would be severe and hard to catch
   otherwise: sign-up/login (Better-Auth), any payment or checkout path,
-  file upload (R2), and any flow sending a transactional email (Mailgun)
+  file upload (R2), and any flow sending a transactional email (Resend)
   end-to-end.
 - Don't write E2E tests for every page or every component state — they're
   slow and expensive to maintain. If a unit or integration test can catch
@@ -847,33 +1072,41 @@ the question entirely.
 ## Before You Finish
 
 - Re-read the diff as if reviewing someone else's PR.
-- Confirm folder placement matches the structure above.
-- Confirm no business logic leaked into a component or a thin Hono route.
+- Confirm folder placement matches the structure above, for your track.
+- Confirm no business logic leaked into a component or a thin route/action.
 - Confirm new external input is validated with Zod.
 - Confirm Drizzle schema changes have a generated migration.
 - Confirm tests exist for new logic and pass locally with `bun test` —
-  unit tests for the logic itself, an integration test if a new Hono
-  route or DB boundary was added, and an E2E test only if this touches a
+  unit tests for the logic itself, an integration test if a new route/
+  action or DB boundary was added, and an E2E test only if this touches a
   critical flow (auth, payment, upload, transactional email).
 - Confirm no file/component/function has silently grown past the size
   limits above — split before finishing, not after.
 - Confirm new shared types live in `types/`, not scattered inline.
 - Confirm icons use Iconify, not hand-written SVGs, and social/brand
-  icons use Akar Icons with verified `-fill` names.
-- Confirm no shadcn/ui (or similar) component was pulled in unless
-  explicitly requested.
+  icons use the Akar Icons set with a verified name.
+- Confirm no shadcn/ui or any other component framework was pulled in —
+  every component is hand-built, with no exceptions.
+- Confirm no styling leaked into a bare global stylesheet, and that the
+  project's one chosen primary approach (Tailwind or CSS Modules) was
+  used consistently.
+- Confirm every new Redis key goes through `lib/redis.ts`'s `buildKey`
+  helper and is properly prefixed with the app name (`example:...`), with
+  an explicit TTL unless intentionally permanent.
 - Confirm no secrets are logged, hard-coded, or leaked to the client.
-- Confirm new/changed env vars are reflected in `.env.example` and the
-  `lib/env.ts` schema.
+- Confirm new/changed env vars are reflected in `.env.example` under the
+  correct grouped section (not appended as a flat, ungrouped line) and in
+  the `lib/env.ts` schema.
 - Confirm errors thrown/returned use `AppError` and don't leak internal
   detail to the client.
 - Confirm the commit message follows Conventional Commits, contains only
   one type of change (not a feat mixed with a fix or a refactor), and the
   PR is scoped to one concern.
 - Confirm reads use Suspense/skeletons matching real content dimensions,
-  the global `app/loading.tsx` uses the shared bouncing-dots indicator
-  without duplicating the header/footer, and writes use optimistic
-  updates only where a failure is low-stakes and a rollback path exists.
+  the global `app/loading.tsx` renders only the shared `<LoadingDots />`
+  global loading component (no duplicated header/footer, no alternate
+  spinner design), and writes use optimistic updates only where a
+  failure is low-stakes and a rollback path exists.
 - Confirm independent fetches run in parallel (`Promise.all`) and no
   Drizzle query runs inside a loop (N+1).
 - Confirm any new third-party API call is cached/deduped where possible,
@@ -887,3 +1120,6 @@ the question entirely.
 - Confirm each stage was actually verified (run, not just written) before
   the next stage was built on top of it — no assumptions carried forward
   unchecked.
+- Confirm the session stayed token-efficient per "Agent Token
+  Efficiency" — no full-file dumps where a diff would do, no verbose
+  tool output pasted unsummarized.
