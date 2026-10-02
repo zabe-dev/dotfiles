@@ -1,8 +1,11 @@
 # ~/.zshrc file for zsh interactive shells on macOS with Homebrew
 
+# Homebrew must be loaded first so $HOMEBREW_PREFIX is available below
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
 setopt autocd              # change directory just by typing its name
 setopt interactivecomments # allow comments in interactive mode
-setopt magicequalsubst     # enable filename expansion for arguments of the form ‘anything=expression’
+setopt magicequalsubst     # enable filename expansion for arguments of the form 'anything=expression'
 setopt nonomatch           # hide error message if there is no match for the pattern
 setopt notify              # report the status of background jobs immediately
 setopt numericglobsort     # sort filenames numerically when it makes sense
@@ -17,19 +20,31 @@ PROMPT_EOL_MARK=""
 bindkey -e                                        # emacs key bindings
 bindkey ' ' magic-space                           # do history expansion on space
 bindkey '^U' backward-kill-line                   # ctrl + U
-bindkey '^[[3;5~' kill-word                       # ctrl + delete
-bindkey '^[[3~' delete-char                       # delete
-bindkey '^[[1;5C' forward-word                    # ctrl + right arrow
-bindkey '^[[1;5D' backward-word                   # ctrl + left arrow
+bindkey '^[[3~' delete-char                       # fn + delete (forward delete)
 bindkey '^[[5~' beginning-of-buffer-or-history    # page up
 bindkey '^[[6~' end-of-buffer-or-history          # page down
 bindkey '^[[H' beginning-of-line                  # home
 bindkey '^[[F' end-of-line                        # end
 bindkey '^[[Z' undo                               # shift + tab undo last action
 
-# enable completion features
-# autoload -Uz compinit
-# compinit -d ~/.cache/zcompdump
+# Option (alt) key word navigation / deletion
+bindkey '^[^?' backward-kill-word                 # option + delete
+bindkey '^[^H' backward-kill-word                 # option + delete (alternate sequence)
+bindkey '^[[3;3~' kill-word                       # option + fn + delete (forward)
+bindkey '^[[1;3C' forward-word                    # option + right arrow
+bindkey '^[[1;3D' backward-word                   # option + left arrow
+bindkey '^[f' forward-word                        # option + right (Terminal.app "Use Option as Meta")
+bindkey '^[b' backward-word                       # option + left  (Terminal.app "Use Option as Meta")
+
+# Docker CLI completions (must be on fpath BEFORE zsh-autocomplete loads;
+# zsh-autocomplete runs compinit itself, so do not call compinit here)
+fpath=($HOME/.docker/completions $fpath)
+
+# enable auto-complete (Homebrew path)
+[ -f $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh ] && \
+    source $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
+
+# completion styles
 zstyle ':completion:*:*:*:*:*' menu select
 zstyle ':completion:*' auto-description 'specify: %d'
 zstyle ':completion:*' completer _expand _complete
@@ -59,23 +74,9 @@ alias history="history 0"
 # configure `time` format
 TIMEFMT=$'\nreal\t%E\nuser\t%U\nsys\t%S\ncpu\t%P'
 
-# set a simple prompt with white color
+# prompt style
 PROMPT_ALTERNATIVE=twoline
 NEWLINE_BEFORE_PROMPT=yes
-
-# configure_prompt() {
-#     prompt_symbol=@
-#     case "$PROMPT_ALTERNATIVE" in
-#         twoline)
-#             PROMPT=$'┌──'${VIRTUAL_ENV:+($(basename $VIRTUAL_ENV))─}$'(%B%n'$prompt_symbol$'%m%b)-[%B%(6~.%-1~/…/%4~.%5~)%b]\n└─%B%(#.#.$)%b '
-#             ;;
-#         oneline|backtrack)
-#             PROMPT=${VIRTUAL_ENV:+($(basename $VIRTUAL_ENV))}$'%B%n@%m%b:%B%~%b%(#.#.$) '
-#             RPROMPT=
-#             ;;
-#     esac
-#     unset prompt_symbol
-# }
 
 # git branch name
 git_branch_info() {
@@ -87,7 +88,6 @@ git_branch_info() {
         fi
     fi
 }
-
 
 configure_prompt() {
     prompt_symbol=@
@@ -103,9 +103,86 @@ configure_prompt() {
     unset prompt_symbol
 }
 
-NEWLINE_BEFORE_PROMPT=yes
+# toggle between oneline and twoline prompt
+toggle_oneline_prompt() {
+    if [ "$PROMPT_ALTERNATIVE" = oneline ]; then
+        PROMPT_ALTERNATIVE=twoline
+    else
+        PROMPT_ALTERNATIVE=oneline
+    fi
+    configure_prompt
+    zle reset-prompt
+}
+zle -N toggle_oneline_prompt
+bindkey ^P toggle_oneline_prompt
 
-# enable syntax highlighting (Homebrew path)
+# set terminal title
+case "$TERM" in
+xterm*|rxvt*|Eterm|aterm|kterm|gnome*|alacritty)
+    TERM_TITLE=$'\e]0;${VIRTUAL_ENV:+($(basename $VIRTUAL_ENV))}%n@%m: %~\a'
+    ;;
+*)
+    ;;
+esac
+
+precmd() {
+    print -Pnr -- "$TERM_TITLE"
+    if [ "$NEWLINE_BEFORE_PROMPT" = yes ]; then
+        if [ -z "$_NEW_LINE_BEFORE_PROMPT" ]; then
+            _NEW_LINE_BEFORE_PROMPT=1
+        else
+            print ""
+        fi
+    fi
+}
+
+autoload -U add-zsh-hook
+add-zsh-hook precmd configure_prompt
+
+# enable color support for ls and other commands
+if command -v gdircolors >/dev/null 2>&1; then
+    # GNU dircolors via Homebrew (coreutils)
+    test -r ~/.dircolors && eval "$(gdircolors -b ~/.dircolors)" || eval "$(gdircolors -b)"
+    export LS_COLORS="$LS_COLORS:ow=30;44:"
+fi
+
+# Use GNU ls if installed, otherwise fallback to macOS ls
+if command -v gls >/dev/null 2>&1; then
+    alias ls='gls --color=auto'
+else
+    alias ls='ls -G'
+fi
+alias ll='ls -l'
+alias la='ls -A'
+alias l='ls -CF'
+
+alias grep='grep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias egrep='egrep --color=auto'
+# only alias diff if this version supports --color
+diff --color=auto /dev/null /dev/null >/dev/null 2>&1 && alias diff='diff --color=auto'
+
+# less color settings
+export LESS_TERMCAP_mb=$'\E[1;31m'     # begin blink
+export LESS_TERMCAP_md=$'\E[1;36m'     # begin bold
+export LESS_TERMCAP_me=$'\E[0m'        # reset bold/blink
+export LESS_TERMCAP_so=$'\E[01;33m'    # begin reverse video
+export LESS_TERMCAP_se=$'\E[0m'        # reset reverse video
+export LESS_TERMCAP_us=$'\E[1;32m'     # begin underline
+export LESS_TERMCAP_ue=$'\E[0m'        # reset underline
+
+# nvm
+export NVM_DIR="$HOME/.nvm"
+[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"  # This loads nvm
+[ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
+
+# enable auto-suggestions (Homebrew path)
+if [ -f /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
+    . /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+    ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=244' # dim gray for suggestions
+fi
+
+# enable syntax highlighting (Homebrew path) -- keep this LAST
 if [ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]; then
     . /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
     ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern)
@@ -151,86 +228,3 @@ if [ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh 
     ZSH_HIGHLIGHT_STYLES[bracket-level-5]=fg=cyan,bold
     ZSH_HIGHLIGHT_STYLES[cursor-matchingbracket]=standout
 fi
-
-# toggle between oneline and twoline prompt
-toggle_oneline_prompt() {
-    if [ "$PROMPT_ALTERNATIVE" = oneline ]; then
-        PROMPT_ALTERNATIVE=twoline
-    else
-        PROMPT_ALTERNATIVE=oneline
-    fi
-    configure_prompt
-    zle reset-prompt
-}
-zle -N toggle_oneline_prompt
-bindkey ^P toggle_oneline_prompt
-
-# set terminal title
-case "$TERM" in
-xterm*|rxvt*|Eterm|aterm|kterm|gnome*|alacritty)
-    TERM_TITLE=$'\e]0;${VIRTUAL_ENV:+($(basename $VIRTUAL_ENV))}%n@%m: %~\a'
-    ;;
-*)
-    ;;
-esac
-
-precmd() {
-    print -Pnr -- "$TERM_TITLE"
-    if [ "$NEWLINE_BEFORE_PROMPT" = yes ]; then
-        if [ -z "$_NEW_LINE_BEFORE_PROMPT" ]; then
-            _NEW_LINE_BEFORE_PROMPT=1
-        else
-            print ""
-        fi
-    fi
-}
-
-# enable color support for ls and other commands
-if command -v dircolors >/dev/null 2>&1; then
-    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
-    export LS_COLORS="$LS_COLORS:ow=30;44:"
-elif command -v gdircolors >/dev/null 2>&1; then
-    # Use GNU dircolors if installed via Homebrew (coreutils)
-    test -r ~/.dircolors && eval "$(gdircolors -b ~/.dircolors)" || eval "$(gdircolors -b)"
-    export LS_COLORS="$LS_COLORS:ow=30;44:"
-fi
-
-# Use GNU ls if installed, otherwise fallback to macOS ls
-if command -v gls >/dev/null 2>&1; then
-    alias ls='gls --color=auto'
-else
-    alias ls='ls -G'
-fi
-alias ll='ls -l'
-alias la='ls -A'
-alias l='ls -CF'
-
-alias grep='grep --color=auto'
-alias fgrep='fgrep --color=auto'
-alias egrep='egrep --color=auto'
-alias diff='diff --color=auto'
-alias ip='ip --color=auto'
-
-# less color settings
-export LESS_TERMCAP_mb=$'\E[1;31m'     # begin blink
-export LESS_TERMCAP_md=$'\E[1;36m'     # begin bold
-export LESS_TERMCAP_me=$'\E[0m'        # reset bold/blink
-export LESS_TERMCAP_so=$'\E[01;33m'    # begin reverse video
-export LESS_TERMCAP_se=$'\E[0m'        # reset reverse video
-export LESS_TERMCAP_us=$'\E[1;32m'     # begin underline
-export LESS_TERMCAP_ue=$'\E[0m'        # reset underline
-
-# enable auto-suggestions (Homebrew path)
-if [ -f /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
-    . /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-    ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=244' # dim gray for suggestions
-fi
-
-# enable auto-complete (Homebrew path)
-source $HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
-
-# Add Homebrew to PATH
-eval "$(/opt/homebrew/bin/brew shellenv)"
-
-autoload -U add-zsh-hook
-add-zsh-hook precmd configure_prompt
